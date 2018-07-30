@@ -240,28 +240,16 @@ def cell_list_to_rect(cell_list):
 def update_worksheet_properties(func):
     """
     Decorator for gspread.models.Worksheet methods, to update Worksheet
-    instance properties after calling those methods, so the properties 
+    instance properties after calling those methods, so the properties
     stay up to date with actual spreadsheet state
     """
     def wrapper(*args, **kwargs):
         self = args[0]
-        sheet_id = self.id
         func(*args, **kwargs)
-        sheet_data = self.spreadsheet.fetch_sheet_metadata()
+        self.spreadsheet._needs_meta_update = True
 
-        try:
-            sheet = finditem(
-                lambda x: x['properties']['sheetId'] == sheet_id,
-                sheet_data['sheets']
-            )
-        except (StopIteration, KeyError):
-            raise WorksheetNotFound(sheet_id)
-
-        properties = sheet['properties']
-
-        self._properties = properties
-    
     return wrapper
+
 
 if __name__ == '__main__':
     import doctest

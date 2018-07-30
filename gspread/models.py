@@ -41,10 +41,35 @@ except NameError:
 
 
 class Spreadsheet(object):
+    _sheets_metadata = []
+
     """The class that represents a spreadsheet."""
     def __init__(self, client, properties):
         self.client = client
         self._properties = properties
+        self._needs_meta_update = True
+
+    def _update_sheet_metadata(self):
+        if self._needs_meta_update:
+            metadata = self.fetch_sheet_metadata()
+            for sheet in metadata['sheets']:
+                props = sheet['properties']
+                try:
+                    item = finditem(
+                        lambda x: props['sheetId'] == x['properties']['sheetId'],
+                        self._sheets_metadata
+                    )
+                    item['properties'].update(props)
+                except (StopIteration, KeyError):
+                    self._sheets_metadata.append(sheet)
+            self._sheets_metadata = sorted(self._sheets_metadata,
+                                          key=lambda x: x['properties']['index'])
+        self._needs_meta_update = False
+
+    @property
+    def _sheets(self):
+        self._update_sheet_metadata()
+        return self._sheets_metadata
 
     @property
     def id(self):
@@ -139,10 +164,8 @@ class Spreadsheet(object):
         >>> worksheet = sht.get_worksheet(0)
 
         """
-        sheet_data = self.fetch_sheet_metadata()
-
         try:
-            properties = sheet_data['sheets'][index]['properties']
+            properties = self._sheets[index]['properties']
             return Worksheet(self, properties)
         except (KeyError, IndexError):
             return None
@@ -152,8 +175,7 @@ class Spreadsheet(object):
         in a spreadsheet.
 
         """
-        sheet_data = self.fetch_sheet_metadata()
-        return [Worksheet(self, x['properties']) for x in sheet_data['sheets']]
+        return [Worksheet(self, x['properties']) for x in self._sheets]
 
     def worksheet(self, title):
         """Returns a worksheet with specified `title`.
@@ -170,11 +192,10 @@ class Spreadsheet(object):
         >>> worksheet = sht.worksheet('Annual bonuses')
 
         """
-        sheet_data = self.fetch_sheet_metadata()
         try:
             item = finditem(
                 lambda x: x['properties']['title'] == title,
-                sheet_data['sheets']
+                self._sheets
             )
             return Worksheet(self, item['properties'])
         except (StopIteration, KeyError):
@@ -205,10 +226,10 @@ class Spreadsheet(object):
         }
 
         data = self.batch_update(body)
+        sheet = data['replies'][0]['addSheet']
+        self._sheets_metadata.append(sheet)
 
-        properties = data['replies'][0]['addSheet']['properties']
-
-        worksheet = Worksheet(self, properties)
+        worksheet = Worksheet(self, sheet['properties'])
 
         return worksheet
 
@@ -224,7 +245,15 @@ class Spreadsheet(object):
             }]
         }
 
-        return self.batch_update(body)
+        res = self.batch_update(body)
+
+        item = finditem(
+            lambda x: x['properties']['sheetId'] == worksheet._properties['sheetId'],
+            self._sheets_metadata
+        )
+        self._sheets_metadata.remove(item)
+
+        return res
 
     def share(self, value, perm_type, role, notify=True, email_message=None):
         """Share the spreadsheet with other accounts.
@@ -285,6 +314,19 @@ class Spreadsheet(object):
 
         return filtered_id_list
 
+import requests
+import logging
+import httplib
+
+# Debug logging
+httplib.HTTPConnection.debuglevel = 1
+logging.basicConfig()
+logging.getLogger().setLevel(logging.DEBUG)
+req_log = logging.getLogger('requests.packages.urllib3')
+req_log.setLevel(logging.DEBUG)
+req_log.propagate = True
+
+
 
 class Worksheet(object):
     """The class that represents a single sheet in a spreadsheet
@@ -301,6 +343,14 @@ class Worksheet(object):
         return '<%s %s id:%s>' % (self.__class__.__name__,
                                   repr(self.title),
                                   self.id)
+    @property
+    def _properties(self):
+        self.spreadsheet._update_sheet_metadata()
+        return self._props_store
+
+    @_properties.setter
+    def _properties(self, value):
+        self._props_store = value
 
     @property
     def id(self):
