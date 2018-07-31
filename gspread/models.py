@@ -314,19 +314,6 @@ class Spreadsheet(object):
 
         return filtered_id_list
 
-import requests
-import logging
-import httplib
-
-# Debug logging
-httplib.HTTPConnection.debuglevel = 1
-logging.basicConfig()
-logging.getLogger().setLevel(logging.DEBUG)
-req_log = logging.getLogger('requests.packages.urllib3')
-req_log.setLevel(logging.DEBUG)
-req_log.propagate = True
-
-
 
 class Worksheet(object):
     """The class that represents a single sheet in a spreadsheet
